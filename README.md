@@ -83,7 +83,7 @@ To execute the script:
 1. Run the following command:
 
    ```bash
-   node main.js
+   node index.js
    ```
 
 2. The script will:
