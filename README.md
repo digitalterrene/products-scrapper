@@ -30,8 +30,8 @@ Ensure you have the following installed:
    Clone the project repository to your local machine using the following command:
 
    ```bash
-   git clone `[<products-scrapper>](https://github.com/digitalterrene/products-scrapper.git)`
-   cd <products-scrapper>
+   git clone `https://github.com/digitalterrene/products-scrapper.git`
+   cd `products-scrapper`
    ```
 
 2. **Install Dependencies**  
