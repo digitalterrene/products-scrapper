@@ -1,0 +1,404 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Products Scrapper API",
+    "version": "1.0.0",
+    "description": "Interactive REST API for discovering e-commerce product links, testing CSS selectors against live product pages, running the full ETL pipeline, and inspecting exported CSV datasets — directly in the browser with no external REST client required."
+  },
+  "servers": [
+    {
+      "url": "http://localhost:3000",
+      "description": "Local Development Server"
+    }
+  ],
+  "tags": [
+    {
+      "name": "System",
+      "description": "Server health and runtime diagnostics"
+    },
+    {
+      "name": "Scraping",
+      "description": "Interactive link discovery, selector testing, and full ETL execution"
+    },
+    {
+      "name": "Results",
+      "description": "Inspect or download exported CSV datasets"
+    }
+  ],
+  "paths": {
+    "/api/health": {
+      "get": {
+        "tags": ["System"],
+        "summary": "Check API server health",
+        "description": "Returns service status, uptime, Node.js version, and links to OpenAPI documentation.",
+        "responses": {
+          "200": {
+            "description": "Service is healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                },
+                "example": {
+                  "status": "ok",
+                  "service": "products-scrapper",
+                  "uptimeSeconds": 42,
+                  "nodeVersion": "v20.11.0",
+                  "docsUrl": "/docs",
+                  "openApiUrl": "/docs/openapi.json"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/scrape/links": {
+      "post": {
+        "tags": ["Scraping"],
+        "summary": "Discover product links from a listing page",
+        "description": "Fetches the target catalog page and extracts all anchor hrefs inside `div.<divClass> a`, normalizing relative URLs into absolute URLs.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScrapeLinksRequest"
+              },
+              "example": {
+                "url": "https://books.toscrape.com/",
+                "divClass": "image_container"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Product links extracted successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScrapeLinksResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "502": {
+            "$ref": "#/components/responses/UpstreamFetchError"
+          }
+        }
+      }
+    },
+    "/api/scrape/details": {
+      "post": {
+        "tags": ["Scraping"],
+        "summary": "Scrape details from a single product page (selector dry-run)",
+        "description": "Fetches a single product page and evaluates the configured CSS selectors (`props`). Set `downloadImages: false` to preview extracted image URLs without writing files to disk.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScrapeDetailsRequest"
+              },
+              "example": {
+                "url": "https://books.toscrape.com/catalogue/a-light-in-the-attic_1000/index.html",
+                "downloadImages": false,
+                "props": {
+                  "titleSelector": ".product_main h1",
+                  "shortDescriptionSelector": ".product_main .price_color",
+                  "longDescriptionSelector": "#product_description + p",
+                  "imageSelector": ".item.active img"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Product details extracted successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScrapeDetailsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "502": {
+            "$ref": "#/components/responses/UpstreamFetchError"
+          }
+        }
+      }
+    },
+    "/api/scrape/run": {
+      "post": {
+        "tags": ["Scraping"],
+        "summary": "Run the full end-to-end scraping pipeline",
+        "description": "Discovers product links from `mainPageUrl`, scrapes each product page sequentially, optionally downloads images to `./images/`, and exports results to CSV. Use `maxProducts` to cap batch size during testing.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScrapeRunRequest"
+              },
+              "example": {
+                "mainPageUrl": "https://books.toscrape.com/",
+                "divClass": "image_container",
+                "downloadImages": false,
+                "saveCsv": true,
+                "csvFilePath": "scraped_data.csv",
+                "maxProducts": 3,
+                "props": {
+                  "titleSelector": ".product_main h1",
+                  "shortDescriptionSelector": ".product_main .price_color",
+                  "longDescriptionSelector": "#product_description + p",
+                  "imageSelector": ".item.active img"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Pipeline executed successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScrapeRunResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "502": {
+            "$ref": "#/components/responses/UpstreamFetchError"
+          }
+        }
+      }
+    },
+    "/api/results": {
+      "get": {
+        "tags": ["Results"],
+        "summary": "Read exported CSV records",
+        "description": "Reads `scraped_data.csv` (or another `.csv` file in the workspace root) and returns parsed JSON rows or the raw CSV file.",
+        "parameters": [
+          {
+            "name": "file",
+            "in": "query",
+            "required": false,
+            "description": "CSV filename located in the repository root",
+            "schema": {
+              "type": "string",
+              "default": "scraped_data.csv"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "description": "Output format (`json` for parsed rows, `csv` for raw file download)",
+            "schema": {
+              "type": "string",
+              "enum": ["json", "csv"],
+              "default": "json"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Scraped dataset returned successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultsResponse"
+                }
+              },
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "404": {
+            "description": "CSV file not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "SelectorProps": {
+        "type": "object",
+        "properties": {
+          "titleSelector": {
+            "type": "string",
+            "description": "CSS selector for the product title"
+          },
+          "shortDescriptionSelector": {
+            "type": "string",
+            "description": "CSS selector for the short description"
+          },
+          "longDescriptionSelector": {
+            "type": "string",
+            "description": "CSS selector for full description paragraph(s)"
+          },
+          "imageSelector": {
+            "type": "string",
+            "description": "CSS selector for product <img> elements"
+          }
+        }
+      },
+      "ProductDetails": {
+        "type": "object",
+        "properties": {
+          "url": { "type": "string", "format": "uri" },
+          "title": { "type": "string" },
+          "shortDescription": { "type": "string" },
+          "longDescription": { "type": "string" },
+          "images": { "type": "string" }
+        }
+      },
+      "HealthResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "example": "ok" },
+          "service": { "type": "string", "example": "products-scrapper" },
+          "uptimeSeconds": { "type": "integer" },
+          "nodeVersion": { "type": "string" },
+          "docsUrl": { "type": "string" },
+          "openApiUrl": { "type": "string" }
+        }
+      },
+      "ScrapeLinksRequest": {
+        "type": "object",
+        "required": ["url", "divClass"],
+        "properties": {
+          "url": { "type": "string", "format": "uri" },
+          "divClass": { "type": "string" }
+        }
+      },
+      "ScrapeLinksResponse": {
+        "type": "object",
+        "properties": {
+          "sourceUrl": { "type": "string" },
+          "divClass": { "type": "string" },
+          "count": { "type": "integer" },
+          "links": {
+            "type": "array",
+            "items": { "type": "string", "format": "uri" }
+          }
+        }
+      },
+      "ScrapeDetailsRequest": {
+        "type": "object",
+        "required": ["url", "props"],
+        "properties": {
+          "url": { "type": "string", "format": "uri" },
+          "downloadImages": { "type": "boolean", "default": false },
+          "props": { "$ref": "#/components/schemas/SelectorProps" }
+        }
+      },
+      "ScrapeDetailsResponse": {
+        "type": "object",
+        "properties": {
+          "url": { "type": "string" },
+          "downloadImages": { "type": "boolean" },
+          "details": { "$ref": "#/components/schemas/ProductDetails" }
+        }
+      },
+      "ScrapeRunRequest": {
+        "type": "object",
+        "required": ["mainPageUrl", "divClass", "props"],
+        "properties": {
+          "mainPageUrl": { "type": "string", "format": "uri" },
+          "divClass": { "type": "string" },
+          "props": { "$ref": "#/components/schemas/SelectorProps" },
+          "downloadImages": { "type": "boolean", "default": true },
+          "saveCsv": { "type": "boolean", "default": true },
+          "csvFilePath": { "type": "string", "default": "scraped_data.csv" },
+          "maxProducts": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Optional cap on number of products to process (recommended for testing)"
+          }
+        }
+      },
+      "ScrapeRunResponse": {
+        "type": "object",
+        "properties": {
+          "mainPageUrl": { "type": "string" },
+          "totalLinksFound": { "type": "integer" },
+          "processedCount": { "type": "integer" },
+          "savedToCsv": { "type": "boolean" },
+          "csvFilePath": { "type": "string", "nullable": true },
+          "items": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/ProductDetails" }
+          }
+        }
+      },
+      "ResultsResponse": {
+        "type": "object",
+        "properties": {
+          "file": { "type": "string" },
+          "count": { "type": "integer" },
+          "records": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": { "type": "string" }
+            }
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": { "type": "string" },
+          "message": { "type": "string" },
+          "upstreamStatus": { "type": "integer" }
+        }
+      }
+    },
+    "responses": {
+      "ValidationError": {
+        "description": "Invalid request payload or parameters",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+          }
+        }
+      },
+      "UpstreamFetchError": {
+        "description": "Target website returned an HTTP error or could not be reached",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,145 +1,171 @@
-# Product Scraper Documentation
+# Products Scrapper
 
-Welcome to the Product Scraper project! This script allows you to scrape product information from an e-commerce site and save the data in a CSV file. It's built using Node.js, with `axios` for HTTP requests, `cheerio` for HTML parsing, and `csv-writer` for saving data.
+[![Node.js](https://img.shields.io/badge/Node.js-16%2B-339933?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org/)
+[![License: ISC](https://img.shields.io/badge/License-ISC-blue.svg?style=flat-square)](./LICENSE)
+[![Commits: Conventional](https://img.shields.io/badge/Commits-Conventional-orange.svg?style=flat-square)](https://www.conventionalcommits.org/)
 
-This documentation will guide you through setting up the project, customizing it for your use case, and running it effectively.
-
----
-
-## Features
-
-- Scrapes product titles, descriptions, and images.
-- Extracts product links from a specified container.
-- Downloads product images locally.
-- Saves scraped data into a CSV file for easy analysis.
+A lightweight, configurable Node.js ETL web scraper that extracts product listings, details, descriptions, and image assets from static e-commerce pages, downloads product images locally, and exports structured records to CSV.
 
 ---
 
-## Prerequisites
+## Quick Start
 
-Ensure you have the following installed:
+Run the scraper locally in 3 steps:
 
-- **Node.js** (v16 or higher recommended)
-- **npm** (comes with Node.js)
+```bash
+# 1. Clone the repository
+git clone https://github.com/digitalterrene/products-scrapper.git
+cd products-scrapper
 
----
+# 2. Install dependencies
+npm install
 
-## Setting Up the Project
+# 3. Start the interactive API & Swagger UI (test endpoints in browser — no Postman needed)
+npm start
+# Open http://localhost:3000/docs
 
-1. **Clone the Repository**  
-   Clone the project repository to your local machine using the following command:
+# Or run the CLI scraper directly after configuring index.js
+npm run scrape
+```
 
-   ```bash
-   git clone `https://github.com/digitalterrene/products-scrapper.git`
-   cd `products-scrapper`
-   ```
-
-2. **Install Dependencies**  
-   Install the required Node.js packages:
-
-   ```bash
-   npm install
-   ```
-
-3. **Update the Configuration**  
-   Open the `index.js` file (or your project’s entry file) and update the placeholders to match the structure of the target e-commerce website:
-
-   - Replace `mainPageUrl` with the URL of the main page you want to scrape.
-   - Replace `divClass` with the class name of the container holding product links.
-   - Update the `props` object with appropriate CSS selectors for:
-     - `titleSelector` – for product titles.
-     - `shortDescriptionSelector` – for short descriptions.
-     - `longDescriptionSelector` – for long descriptions.
-     - `imageSelector` – for product images.
+### Prerequisites
+- **Node.js** `v16+` (v18 or v20 LTS recommended)
+- **npm** `v8+`
 
 ---
 
-## Customizing the Selectors
+## System Architecture
 
-To ensure accurate scraping, identify the correct CSS selectors from the e-commerce site using browser developer tools:
+`products-scrapper` follows a sequential link-discovery and page-extraction pipeline with concurrent per-product image streaming:
 
-1. Open the website in your browser.
-2. Right-click the element you want to scrape (e.g., product title) and select **Inspect**.
-3. Note down the CSS class or ID of the element.
-4. Replace the respective properties in the `props` object.
+```mermaid
+flowchart TD
+    A["Listing Page URL (mainPageUrl)"] -->|axios.get| B["fetchPage()"]
+    B -->|cheerio.load| C["scrapeLinksInDiv(url, divClass)"]
+    C -->|Normalized Product URLs| D{"For Each Product Link"}
+    D -->|axios.get| E["scrapeDetailsFromPage(link, props)"]
+    E -->|CSS Selectors| F["Extract Title & Descriptions"]
+    E -->|Image src URLs| G["downloadImage() via Promise.all"]
+    G -->|fs.createWriteStream| H[("Local ./images/ Directory")]
+    F --> I["Aggregated Product Record"]
+    G -->|Local File Paths| I
+    I -->|Next Link| D
+    D -->|All Links Processed| J["saveToCsv(scrapedData, csvFilePath)"]
+    J -->|csv-writer| K[("scraped_data.csv")]
+```
 
-Example `props`:
+### Deep-Dive Documentation (4-Tier Architecture)
 
-```javascript
-const props = {
-  titleSelector: ".product-title-class", // CSS selector for titles
-  shortDescriptionSelector: ".short-desc-class", // CSS selector for short descriptions
-  longDescriptionSelector: ".long-desc-class", // CSS selector for long descriptions
-  imageSelector: ".product-image-class img", // CSS selector for images
-};
+| Tier | Document | Purpose |
+|---|---|---|
+| **Tier 1: Governance** | [CONTRIBUTING.md](./CONTRIBUTING.md), [SECURITY.md](./SECURITY.md), [docs/git-standards.md](./docs/git-standards.md) | Contribution rules, security disclosure, branching & commit standards |
+| **Tier 2: Architecture** | [System Design](./docs/architecture/system-design.md) | Component topology, execution flow, and module boundaries |
+| **Tier 2: Data Model** | [Data Model & Schemas](./docs/architecture/data-model.md) | Selector contract, in-memory DTOs, CSV schema, and ERDs |
+| **Tier 2: Security** | [Security & Scraping Posture](./docs/architecture/security-and-rbac.md) | Threat model, SSRF/path-traversal mitigations, and ethical scraping |
+| **Tier 2: API & Swagger** | [API Walkthrough](./docs/api/README.md), [OpenAPI 3.0.3 Spec](./docs/api/openapi.json) | Interactive Swagger UI (`/docs`) and endpoint usage guide |
+| **Tier 3: Decisions** | [Architecture Decision Records](./docs/adr/README.md) | Historical rationale for key technical trade-offs (ADRs) |
+| **Tier 4: Operations** | [Deployment Verification](./docs/runbooks/deployment-verification.md), [Incident Response](./docs/runbooks/incident-response.md) | Verification checklists and scraping failure triage playbooks |
+
+---
+
+## Repository Structure
+
+```text
+products-scrapper/
+├── index.js                            # CLI entry point & core scraping functions
+├── server.js                           # Express REST API & interactive Swagger UI (/docs)
+├── functions/                          # Modular helper functions (standalone/reusable units)
+│   ├── fetchPage.js                    # HTTP GET + Cheerio DOM loader
+│   ├── scrapeLinksInDivs.js            # Product link extractor from container div
+│   ├── scrapeDetailsFromPage.js        # Detail extractor (URL-only image collection)
+│   └── saveToCsv.js                    # CSV writer helper
+├── docs/
+│   ├── api/                            # API walkthrough & OpenAPI 3.0.3 spec (Swagger UI)
+│   │   ├── README.md
+│   │   └── openapi.json
+│   ├── git-standards.md                # Branching, Conventional Commits & hygiene rules
+│   ├── architecture/                   # Tier 2: System design, data model, security posture
+│   ├── adr/                            # Tier 3: Architecture Decision Records (ADR-000..003)
+│   └── runbooks/                       # Tier 4: Verification & incident triage runbooks
+├── .github/
+│   ├── PULL_REQUEST_TEMPLATE.md        # Standardized PR checklist
+│   └── ISSUE_TEMPLATE/                 # Bug report & feature request templates
+├── scraped_data.csv                    # Default CSV output target
+├── package.json                        # Project manifest & dependencies
+├── CONTRIBUTING.md                     # Contributor guide
+├── SECURITY.md                         # Security policy & reporting SLAs
+└── LICENSE                             # License terms
 ```
 
 ---
 
-## Running the Scraper
+## Tech Stack
 
-To execute the script:
-
-1. Run the following command:
-
-   ```bash
-   node index.js
-   ```
-
-2. The script will:
-   - Extract all product links from the specified `divClass`.
-   - Visit each product link and scrape the details as per the configured selectors.
-   - Save the data into a CSV file named `scraped_data.csv`.
+| Layer | Technology | Version | Role |
+|---|---|---|---|
+| Runtime | Node.js | `>= 16` | JavaScript execution environment (CommonJS) |
+| HTTP Client | `axios` | `^1.7.2` | Fetches HTML documents and streams binary image downloads |
+| HTML Parser | `cheerio` | `^1.0.0-rc.12` | Fast CSS-selector-based server-side DOM querying |
+| CSV Export | `csv-writer` | `^1.6.0` | Quoted, append-capable CSV record serialization |
 
 ---
 
-## Output
+## Configuration
 
-### CSV File
+Open [`index.js`](./index.js) and update the configuration block inside `main()`:
 
-The scraped data is saved in `scraped_data.csv` in the following format:
+```javascript
+const mainPageUrl = "https://example-store.com/products";
+const divClass = "products";
+const props = {
+  titleSelector: ".product-info-main h1",
+  shortDescriptionSelector: ".product-info-main div.prose p",
+  longDescriptionSelector: "section.product-description .product-info-main p",
+  imageSelector: ".product-info-main div img",
+};
+const csvFilePath = "scraped_data.csv";
+```
 
-| URL         | Title         | Short Description | Long Description | Images                 |
-| ----------- | ------------- | ----------------- | ---------------- | ---------------------- |
-| Product URL | Product Title | Short Description | Long Description | Image1.jpg, Image2.jpg |
+| Parameter | Type | Description |
+|---|---|---|
+| `mainPageUrl` | `string` | Base URL of the catalog/listing page containing product links |
+| `divClass` | `string` | CSS class name of the `<div>` wrapping product `<a>` tags (`div.${divClass} a`) |
+| `props.titleSelector` | `string` | CSS selector targeting the product title element |
+| `props.shortDescriptionSelector` | `string` | CSS selector targeting the concise summary element |
+| `props.longDescriptionSelector` | `string` | CSS selector targeting full description paragraph(s) (joined with spaces) |
+| `props.imageSelector` | `string` | CSS selector targeting product `<img>` elements |
+| `csvFilePath` | `string` | Destination path for CSV output (default: `scraped_data.csv`) |
 
-### Images
+### Output Format
 
-Downloaded product images are saved in the `images` folder.
+1. **CSV File (`scraped_data.csv`)**: All fields are quoted (`alwaysQuote: true`). Existing files are appended to without duplicating headers.
 
----
+| URL | Title | Short Description | Long Description | Images |
+|---|---|---|---|---|
+| `https://.../item-1` | `Widget Pro` | `Compact widget` | `Full product overview...` | `/abs/path/images/img1.jpg, /abs/path/images/img2.jpg` |
 
-## Troubleshooting
-
-- **Selectors not working?**  
-  Verify the CSS selectors using browser developer tools and update the `props` object accordingly.
-
-- **Script crashes?**  
-  Check the error log for issues like:
-
-  - Incorrect URL or selector.
-  - Missing internet connection.
-  - Missing write permissions for the `images` or `csv` file directory.
-
-- **Rate-limiting issues?**  
-  If the target site blocks requests, consider adding a delay between requests using `setTimeout`.
-
----
-
-## Extending the Script
-
-You can extend the script to:
-
-- **Scrape additional fields**: Add more selectors to the `props` object and extract data accordingly in the `scrapeDetailsFromPage` function.
-- **Handle pagination**: Automate navigating through paginated product listings.
+2. **Images (`./images/`)**: Downloaded via binary stream using `path.basename(url)` as the filename.
 
 ---
 
-## Notes
+## Verification & Hygiene Checks
 
-- **Ethical scraping**: Ensure you comply with the site's terms of service and use this tool responsibly.
-- **Testing**: Test the script on a small dataset before scaling.
+```bash
+# Verify Node.js syntax for all source files
+node --check index.js
+node --check functions/fetchPage.js
+node --check functions/scrapeLinksInDivs.js
+node --check functions/scrapeDetailsFromPage.js
+node --check functions/saveToCsv.js
+
+# Run repository standards & hygiene audit
+node .agents/skills/senior-repo-standards/scripts/audit-hygiene.js
+```
 
 ---
 
-Happy scraping! If you have questions or need assistance, feel free to reach out. 😊
+## Contributing & Security
+
+- Review [CONTRIBUTING.md](./CONTRIBUTING.md) and [docs/git-standards.md](./docs/git-standards.md) before opening a pull request.
+- Report security concerns privately following [SECURITY.md](./SECURITY.md).
+- Always respect target websites' `robots.txt` directives and Terms of Service.

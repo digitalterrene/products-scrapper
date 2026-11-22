@@ -1,2 +1,51 @@
-/node_modules
-/.env
+# ==============================================================================
+# Products Scrapper — Production .gitignore
+# ==============================================================================
+
+# 1. Credentials, Secrets & Environment Files
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.cert
+*.crt
+*.pfx
+*.p12
+id_rsa*
+id_ed25519*
+*credentials*.json
+*token*.json
+
+# 2. Dependencies
+node_modules/
+
+# 3. Runtime Logs & Diagnostics
+*.log
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.pid
+*.heapdump
+
+# 4. Build Artifacts, Caches & Coverage
+dist/
+build/
+out/
+.cache/
+coverage/
+.nyc_output/
+
+# 5. Scraper Runtime Outputs
+images/
+
+# 6. OS & Editor Artifacts
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+*.swp
+*.swo
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
