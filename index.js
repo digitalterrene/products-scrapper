@@ -15,13 +15,18 @@ async function scrapeLinksInDiv(url, divClass) {
   $(`div.${divClass} a`).each((_, element) => {
     const link = $(element).attr("href");
     if (link) {
-      links.push(link.startsWith("http") ? link : url + link);
+      try {
+        links.push(new URL(link, url).href);
+      } catch {
+        links.push(link.startsWith("http") ? link : url + link);
+      }
     }
   });
   return links;
 }
 
-async function scrapeDetailsFromPage(url, props) {
+async function scrapeDetailsFromPage(url, props, options = {}) {
+  const { downloadImages = true } = options;
   const $ = await fetchPage(url);
   const details = {};
 
@@ -44,22 +49,34 @@ async function scrapeDetailsFromPage(url, props) {
     details.longDescription = details.longDescription.join(" ");
   }
 
-  // Scrape images and download them
+  // Scrape images and optionally download them
   if (props.imageSelector) {
     details.images = [];
     const imagePromises = [];
     $(props.imageSelector).each((_, element) => {
       const imgSrc = $(element).attr("src");
       if (imgSrc) {
-        const imgURL = imgSrc.startsWith("http") ? imgSrc : url + imgSrc;
-        imagePromises.push(
-          downloadImage(imgURL).then((imgPath) => {
-            details.images.push(imgPath);
-          })
-        );
+        let imgURL;
+        try {
+          imgURL = new URL(imgSrc, url).href;
+        } catch {
+          imgURL = imgSrc.startsWith("http") ? imgSrc : url + imgSrc;
+        }
+
+        if (downloadImages) {
+          imagePromises.push(
+            downloadImage(imgURL).then((imgPath) => {
+              details.images.push(imgPath);
+            })
+          );
+        } else {
+          details.images.push(imgURL);
+        }
       }
     });
-    await Promise.all(imagePromises);
+    if (downloadImages) {
+      await Promise.all(imagePromises);
+    }
     details.images = details.images.join(", ");
   }
 
@@ -78,7 +95,13 @@ async function downloadImage(url) {
     fs.mkdirSync(imagesDir);
   }
 
-  const filename = path.basename(url);
+  let rawName;
+  try {
+    rawName = path.basename(new URL(url).pathname);
+  } catch {
+    rawName = path.basename(url);
+  }
+  const filename = (rawName || `image-${Date.now()}.bin`).replace(/[^a-zA-Z0-9._-]/g, "_");
   const imgPath = path.join(imagesDir, filename);
   const writer = fs.createWriteStream(imgPath);
 
@@ -144,4 +167,15 @@ async function main() {
   }
 }
 
-main();
+if (require.main === module) {
+  main();
+}
+
+module.exports = {
+  fetchPage,
+  scrapeLinksInDiv,
+  scrapeDetailsFromPage,
+  downloadImage,
+  saveToCsv,
+  main,
+};
